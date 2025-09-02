@@ -2,14 +2,16 @@ import React, { useState, useEffect, useRef } from "react";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 import "./chatAnimations.css";
 
+const BACKEND_URL = "https://mi-chatbot-backend-6vjk.onrender.com/assistant/stream";
+
 export default function Chatbot() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [botThinking, setBotThinking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(true);
   const [welcomeText, setWelcomeText] = useState("");
-  const fileInputRef = useRef(null);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const fileInputRef = useRef();
 
   const welcomeMessages = [
     "Hoy es un gran día para aprender algo nuevo!",
@@ -21,50 +23,40 @@ export default function Chatbot() {
     "¡Hora de ser productivo y creativo!"
   ];
 
-  // -------------------------
-  // Mostrar frase de fondo
-  // -------------------------
   useEffect(() => {
     const dayIndex = new Date().getDate() % welcomeMessages.length;
     setWelcomeText(welcomeMessages[dayIndex]);
   }, []);
 
-  // -------------------------
-  // Agregar mensaje
-  // -------------------------
-  const addMessage = (text, sender = "bot") => {
-    setMessages(prev => [...prev, { text, sender, id: Date.now() + Math.random() }]);
+  const addMessage = (text, sender) => {
+    setMessages(prev => [...prev, { text, sender, id: Date.now() }]);
   };
 
-  // -------------------------
-  // Enviar mensaje
-  // -------------------------
   const sendMessage = async () => {
-    if (!input && (!fileInputRef.current || fileInputRef.current.files.length === 0)) return;
-    if (input) addMessage(input, "user");
+    if (!input.trim() && (!fileInputRef.current || fileInputRef.current.files.length === 0)) return;
 
+    if (input.trim()) addMessage(input, "user");
     setInput("");
     setBotThinking(true);
-    setShowWelcome(false); // Desaparece frase de fondo al enviar mensaje
+    setShowWelcome(false);
 
     const formData = new FormData();
     formData.append("command", input);
     if (fileInputRef.current) {
-      for (let i = 0; i < fileInputRef.current.files.length; i++) {
-        formData.append("upload_files", fileInputRef.current.files[i]);
-      }
+      Array.from(fileInputRef.current.files).forEach(file =>
+        formData.append("upload_files", file)
+      );
       fileInputRef.current.value = "";
     }
 
     try {
-      const res = await fetch("https://mi-chatbot-backend-6vjk.onrender.com/assistant/stream", {
+      const res = await fetch(BACKEND_URL, {
         method: "POST",
         body: formData,
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
       });
-
       const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
+      const decoder = new TextDecoder();
       let done = false;
       let botText = "";
 
@@ -83,64 +75,47 @@ export default function Chatbot() {
         const filtered = prev.filter(m => m.sender !== "bot-temp");
         return [...filtered, { text: botText, sender: "bot", id: Date.now() }];
       });
-
-    } catch (err) {
-      console.error(err);
+    } catch {
       setBotThinking(false);
       addMessage("❌ Error al conectar con el backend.", "bot");
     }
   };
 
-  // -------------------------
-  // Manejo menú de archivos
-  // -------------------------
-  const handleMenuOption = (type) => {
+  const handleFileMenu = (type) => {
     setMenuOpen(false);
     if (!fileInputRef.current) return;
-
-    if (type === "gallery") {
-      fileInputRef.current.accept = "image/*";
-      fileInputRef.current.removeAttribute("capture");
-    } else if (type === "camera") {
-      fileInputRef.current.accept = "image/*";
-      fileInputRef.current.setAttribute("capture", "environment");
-    } else if (type === "file") {
-      fileInputRef.current.accept = ".pdf,.docx";
-      fileInputRef.current.removeAttribute("capture");
-    }
+    fileInputRef.current.accept = type === "file" ? ".pdf,.docx" : "image/*";
+    type === "camera" && fileInputRef.current.setAttribute("capture", "environment");
     fileInputRef.current.click();
   };
 
   return (
-    <div className="relative flex flex-col h-screen bg-gray-900 text-white">
-
-      {/* Frase de fondo */}
+    <div className="relative flex flex-col h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white">
       {showWelcome && (
-        <div className="absolute inset-0 flex justify-center items-center z-0 pointer-events-none">
-          <h2 className="text-gray-600 text-center text-xl animate-fade-in">{welcomeText}</h2>
+        <div className="absolute inset-0 flex items-center justify-center z-0 pointer-events-none">
+          <h2 className="text-gray-500 animate-fade-in">{welcomeText}</h2>
         </div>
       )}
 
-      {/* Título X-AI y menú */}
-      <div className="flex justify-between items-center p-4 bg-gray-800 z-10">
-        <h1 className="text-2xl font-bold animate-fade-in">X-AI</h1>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-900 z-10">
+        <h1 className="text-xl font-bold">X-AI</h1>
         <button onClick={() => setMenuOpen(!menuOpen)} className="px-3 py-2 bg-gray-700 rounded">📂</button>
       </div>
 
-      {/* Chat */}
-      <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto z-10">
+      {/* Chat Box */}
+      <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4 z-10">
         <TransitionGroup>
           {messages.map(m => (
             <CSSTransition key={m.id} timeout={400} classNames="msg">
-              <div className={`max-w-[70%] p-2 rounded-lg ${m.sender==="user" ? "self-end bg-indigo-600" : "self-start bg-gray-700"}`}>
+              <div className={`max-w-[75%] p-3 rounded-lg ${m.sender === "user" ? "self-end bg-indigo-600" : "self-start bg-gray-700"}`}>
                 {m.text}
               </div>
             </CSSTransition>
           ))}
         </TransitionGroup>
-
         {botThinking && (
-          <div className="flex gap-1 self-start mt-1">
+          <div className="flex gap-1 self-start">
             <span className="dot animate-bounce-delay"></span>
             <span className="dot animate-bounce-delay delay-150"></span>
             <span className="dot animate-bounce-delay delay-300"></span>
@@ -148,31 +123,30 @@ export default function Chatbot() {
         )}
       </div>
 
-      {/* Footer input */}
-      <div className="flex items-center gap-2 p-2 bg-gray-800 z-10">
-        <button onClick={() => setMenuOpen(!menuOpen)} className="px-3 py-2 bg-gray-700 rounded">📎</button>
+      {/* Input Footer */}
+      <div className="flex items-center p-2 bg-gray-900 gap-2 z-10">
+        <button onClick={() => handleFileMenu("gallery")} className="px-3 py-2 bg-gray-700 rounded">📎</button>
         <input
-          type="text"
-          className="flex-1 p-2 rounded bg-gray-700 text-white focus:outline-none"
+          className="flex-1 p-2 bg-gray-800 rounded text-white"
           placeholder="Escribe un mensaje..."
           value={input}
-          onChange={(e) => { setInput(e.target.value); if(e.target.value) setShowWelcome(false); }}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          onChange={e => { setInput(e.target.value); if (e.target.value.trim()) setShowWelcome(false); }}
+          onKeyDown={e => e.key === "Enter" && sendMessage()}
         />
         <button onClick={sendMessage} className="px-3 py-2 bg-green-600 rounded">➡️</button>
       </div>
 
+      {/* Hidden file input */}
       <input ref={fileInputRef} type="file" className="hidden" multiple />
 
-      {/* Menú de archivos */}
+      {/* File menu */}
       {menuOpen && (
-        <div className="absolute bottom-16 left-4 flex flex-col gap-2 bg-gray-700 p-2 rounded shadow-lg z-50">
-          <button onClick={() => handleMenuOption("gallery")} className="px-3 py-1 bg-indigo-600 rounded">Galería</button>
-          <button onClick={() => handleMenuOption("camera")} className="px-3 py-1 bg-indigo-600 rounded">Cámara</button>
-          <button onClick={() => handleMenuOption("file")} className="px-3 py-1 bg-indigo-600 rounded">Archivo</button>
+        <div className="absolute bottom-16 left-4 flex flex-col bg-gray-800 p-2 rounded-md z-50">
+          <button onClick={() => handleFileMenu("gallery")} className="py-1 px-2 hover:bg-gray-700">Galería</button>
+          <button onClick={() => handleFileMenu("camera")} className="py-1 px-2 hover:bg-gray-700">Cámara</button>
+          <button onClick={() => handleFileMenu("file")} className="py-1 px-2 hover:bg-gray-700">Archivos (PDF/Word)</button>
         </div>
       )}
-
     </div>
   );
 }
